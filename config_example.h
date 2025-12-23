@@ -11,7 +11,7 @@
 #define DEFAULT_USE_STATIC  true
 #define DEFAULT_STATIC_IP       "192.168.1.1" //Change to a free static IP
 #define DEFAULT_STATIC_MASK     "255.255.255.0" //Match to your network subnet mask
-#define STATICDEFAULT_STATIC_GW       "192.168.1.1"  //Match to your router/gateway.
+#define DEFAULT_STATIC_GW       "192.168.1.1"  //Match to your router/gateway.
 #define UART_ID         uart0
 #define BAUD_RATE          2400
 #define TX_PIN             0
