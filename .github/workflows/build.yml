@@ -1,14 +1,17 @@
-name: Build Pico Firmware
+name: Build and Release
 
 on:
   push:
     branches: [ "experimental" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "experimental" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     env:
       PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
@@ -16,23 +19,46 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Install the ARM Toolchain and CMake
     - name: Install Toolchain
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential cmake
 
-    # Clone the Pico SDK (Required for RP2040 build)
     - name: Clone Pico SDK
       run: |
         git clone https://github.com/raspberrypi/pico-sdk.git $PICO_SDK_PATH
         cd $PICO_SDK_PATH
         git submodule update --init
 
-    # Build the Project
     - name: Run CMake and Make
       run: |
         mkdir build
         cd build
         cmake ..
         make
+
+    # 1. Save Artifact (For your internal history/debugging)
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: firmware-build
+        path: build/*.uf2
+
+    # 2. PROD RELEASE: If you push a tag (v1.0), make a formal release
+    - name: Create Official Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/*.uf2
+        generate_release_notes: true
+
+    # 3. EXPERIMENTAL RELEASE: If on experimental branch, update the "Nightly" release
+    - name: Update Experimental Release
+      if: github.ref == 'refs/heads/experimental'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: experimental-build
+        name: Latest Experimental Build
+        prerelease: true
+        files: build/*.uf2
+        overwrite: true
