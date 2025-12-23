@@ -10,10 +10,14 @@
 #include "lwip/apps/mqtt.h"
 #include "lwip/netif.h"
 #include "hardware/adc.h"
+#include "lwip/ip_addr.h"
+#include "lwip/netif.h"
+#include "lwip/dhcp.h"
 #include <vector>
-#include "config.h"
 
-const float VOLTAGE_DIVIDER_RATIO = ( (R1_VAL + R2_VAL) / R2_VAL); 
+#include "config_wizard.h"
+
+static float VOLTAGE_DIVIDER_RATIO = 4.9;
 
 
 const float ADC_CONVERSION = 3.3f / 4096.0f;
@@ -71,6 +75,7 @@ void core1_entry() {
     gpio_set_inover(RX_PIN, GPIO_OVERRIDE_INVERT);
     gpio_set_outover(TX_PIN, GPIO_OVERRIDE_INVERT);
     gpio_pull_up(RX_PIN);
+    
 
     uint64_t last_byte_time = 0;
     NemtekState last_pushed_state = {0};
@@ -392,15 +397,15 @@ void connect_mqtt() {
     struct mqtt_connect_client_info_t ci;
     memset(&ci, 0, sizeof(ci));
     ci.client_id = "pico_nemtek";
-    ci.client_user = MQTT_USER;
-    ci.client_pass = MQTT_PASS;
+    ci.client_user = sys_cfg.mqtt_user;
+    ci.client_pass = sys_cfg.mqtt_pass;
     ci.keep_alive = 60;
     ci.will_topic = "nemtek/status";
     ci.will_msg = "{\"comms_good\":\"OFF\",\"armed\":\"unknown\",\"batt_v\":\"unknown\"}"; // Minimal JSON
     ci.will_qos = 1;
     ci.will_retain = 0;
     ip_addr_t broker_ip;
-    ip4addr_aton(MQTT_BROKER_IP, &broker_ip);
+    ip4addr_aton(sys_cfg.mqtt_server, &broker_ip);
     
     mqtt_connecting = true;
     mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
@@ -409,9 +414,9 @@ void connect_mqtt() {
 void setup_static_ip() {
     struct netif *n = &cyw43_state.netif[CYW43_ITF_STA];
     ip_addr_t ip, mask, gw;
-    ip4addr_aton(STATIC_IP, &ip);
-    ip4addr_aton(STATIC_MASK, &mask);
-    ip4addr_aton(STATIC_GW, &gw);
+    ip4addr_aton(sys_cfg.ip, &ip);
+    ip4addr_aton(sys_cfg.mask, &mask);
+    ip4addr_aton(sys_cfg.gateway, &gw);
     netif_set_addr(n, &ip, &mask, &gw);
     netif_set_up(n);
 }
@@ -419,6 +424,10 @@ void setup_static_ip() {
 int main() {
     stdio_init_all();
     sleep_ms(2000);
+    run_config_check();
+    if (sys_cfg.r2_val >0)
+        VOLTAGE_DIVIDER_RATIO =((sys_cfg.r1_val +sys_cfg.r2_val)/ sys_cfg.r2_val);
+     
     printf("Nemtek Druid MQTT Client\n");
     init_adc_sensors() ;
 
@@ -429,8 +438,26 @@ int main() {
 
     if (cyw43_arch_init()) { printf("HW Fail\n"); return 1; }
     cyw43_arch_enable_sta_mode();
-    setup_static_ip();
+    struct netif *n = &cyw43_state.netif[CYW43_ITF_STA];
 
+    if (sys_cfg.static_ip) {
+        dhcp_stop(n);
+        dhcp_release(n); 
+
+        ip4_addr_t ip, mask, gw;
+        ip4addr_aton(sys_cfg.ip, &ip);
+        ip4addr_aton(sys_cfg.mask, &mask);
+        ip4addr_aton(sys_cfg.gateway, &gw);
+
+        netif_set_addr(n, &ip, &mask, &gw);
+        
+        netif_set_up(n);
+        
+        printf("Network: Static IP Configured: %s\n", sys_cfg.ip);
+    } else {
+        dhcp_start(n);
+        printf("Network: using DHCP\n");
+    }
 
     mqtt_client = mqtt_client_new();
 
@@ -445,7 +472,7 @@ int main() {
        
         if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP) {
             printf("(Re)Connecting WiFi\n");
-            cyw43_arch_wifi_connect_async(WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK);
+            cyw43_arch_wifi_connect_async(sys_cfg.wifi_ssid, sys_cfg.wifi_pass, CYW43_AUTH_WPA2_AES_PSK);
             for (int i=0;i<7;i++)
             {
                 sleep_ms(1000);
