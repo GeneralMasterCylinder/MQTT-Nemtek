@@ -18,19 +18,25 @@ The BoM so far is:
 5. 330R Resistor
 6. 3V Zener (optional, holdover from previous iterations)
 7. 39k Resistor
-8. 10k Resistor
+8. 2x10k Resistor
 9. 100nF ceramic capacitor
 9. K7805M-1000R3 (and associated decouping capacitors). You can use any other switch mode 5V regulator. Do not use a linear regulator or you may pull too much power from the energiser. If you are concerned about the energiser battery, you can power the pico externally from whatever 5V supply you think is appropriate.
 
 ### Circuit Diagrams
 
-![Basic minimal schematic](readme_assets/schematic_basic.png)
+![Basic minimal schematic](readme_assets/Schematic_TX.png)
 
 ## Building
 
-Import the code into VSCODE as from the Pi Pico extention. Copy **config.example.h** to **config.h** and input your settings into it. Currently the code is static IP only as the pico wifi library doesn't play nice with my router. I will add an option for DHCP in due course.
+Import the code into VSCODE as from the Pi Pico extention. Copy **config.example.h** to **config.h** and input your settings into it. Alternatively, use and test the commissioning mode. The pico presents as a UART on connection to a PC, and you can use your favourite serial terminal program to configure the settings. Be sure to fill in all fields. Leaving them blank will blank them at this point.
 
-Build, flash, check your home assistant. Also you can run it from a PC and it will generate logs which may help figuring out where it got stuck. 
+## Commisioning Mode
+
+During startup, with the pico connected to a PC, you will be prompted to press 'c' to enter config mode. You can set all parameters including the master pin here, if you didn't already set them during build in the master config.h file. 
+
+## Keypad Emulation
+
+The system will try autodetect which of the two possible keypads is free. If you already have two keypads, it will disable control of the energiser as the energiser only allows for one keypad. If you have no keypads, it will select based on if pin 22 is grounded (keypad 1) or not (keypad 2).
 
 ## Home Assistant Config
 
@@ -39,9 +45,11 @@ We authenticate on the MQTT server. So, make sure you create a user for this dev
 ## Known issues
 
 1. Some tags are the wrong type so don't come through properly.
-2. No control is possible in this version.
-3. The alarm history status and service mode tags are not tracked at this point.
-4. Not every possible bit in the protocol is mapped yet.
+2. The alarm history status and service mode tags are not tracked at this point.
+3. Not every possible bit in the protocol is mapped yet.
+4. Only arming and disarming is implemented right now.
+5. Pico WiFi doesn't play nice with all routers. Use a static IP to be sure.
+6. There may still be a memory leak in the experimental branch.
 
 If you are able to assist with raw packets and the state of the LEDs or LCD on you energizer that corresponds to the raw packets, the code can be improved.
 

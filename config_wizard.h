@@ -20,7 +20,7 @@ typedef struct {
     int  mqtt_port;
     char mqtt_user[33];
     char mqtt_pass[33];
-    char master_pin[9];
+    char master_pin[4];
     
     
     bool static_ip;

@@ -61,7 +61,11 @@ void load_config() {
         sys_cfg.mqtt_port = DEFAULT_MQTT_PORT;
         strncpy(sys_cfg.mqtt_user, DEFAULT_MQTT_USER, 32);
         strncpy(sys_cfg.mqtt_pass, DEFAULT_MQTT_PASS, 32);
-        strncpy(sys_cfg.master_pin, DEFAULT_MASTER_PIN, 8);
+        for (int i=0; i<4; i++)
+        {
+            sys_cfg.master_pin[i] = DEFAULT_MASTER_PIN[i]-48;     
+        }
+        
         
         sys_cfg.static_ip = DEFAULT_USE_STATIC;
         strncpy(sys_cfg.ip, DEFAULT_STATIC_IP, 15);
@@ -144,11 +148,22 @@ void run_config_wizard() {
     printf("MQTT Pass: ");
     read_input(buf, 32);
     if (strlen(buf) > 0) strncpy(sys_cfg.mqtt_pass, buf, 32);
-
-    
-    printf("\n[4/6] Master PIN (%s): ", sys_cfg.master_pin);
+    char pin[5];
+    for (int i=0; i<4; i++)
+    {
+        pin[i]=sys_cfg.master_pin[i]+48;
+    }
+    pin[4] ='\0';
+    printf("\n[4/6] Master PIN (%s): ", pin);
     read_input(buf, 8);
-    if (strlen(buf) > 0) strncpy(sys_cfg.master_pin, buf, 8);
+    if (strlen(buf) > 3) 
+    {
+        for (int i=0; i<4; i++)
+        {
+            sys_cfg.master_pin[i] = buf[i]-48;     
+        }
+
+    }
 
     
     printf("\n[5/6] Use Static IP? (y/n): ");

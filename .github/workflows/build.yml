@@ -62,3 +62,4 @@ jobs:
         prerelease: true
         files: build/*.uf2
         overwrite: true
+        generate_release_notes: true

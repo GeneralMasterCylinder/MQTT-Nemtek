@@ -63,6 +63,84 @@ bool mqtt_connected = false;
 bool mqtt_connecting = false;
 static uint8_t rx_raw[32]; 
 static int rx_idx = 0;
+queue_t key_queue;            
+const uint JUMPER_PIN = 22;   
+uint8_t my_keypad_addr = 0x48; 
+bool keypad_tx_enabled = false; 
+NemtekState last_known_state = {0};
+
+
+void perform_address_discovery() {
+    printf("Core 1: Starting Keypad Discovery (5s)...\n");
+    
+    bool addr_40_taken = false;
+    bool addr_48_taken = false;
+    
+    uint64_t start_time = time_us_64();
+    uint8_t buf[32]; 
+    int idx = 0;
+    uint8_t last_polled_addr = 0;
+    uint64_t last_packet_time = 0;
+    uint64_t gap = 0;
+   
+    while (time_us_64() - start_time < 5000000) {
+        core1_heartbeat++;
+        if (uart_is_readable(UART_ID)) {
+            uint8_t ch = uart_getc(UART_ID);
+            
+            if (idx < 31) buf[idx++] = ch;
+
+            if (idx >= 11 && buf[0] == 0xFF) {
+                last_polled_addr = buf[10] & (~0x2);  // Buzzer bit may cause trouble.
+                last_packet_time = time_us_64();
+                idx = 0; 
+                continue; 
+            }
+            if (buf[0] == 0xFF) {
+               
+            }
+            gap = time_us_64() - last_packet_time;
+            if (ch == 0xFE && (gap < 100000)) {
+                printf("Gap (keypad)= %i uS\n",(int)gap);
+                if (last_polled_addr == 0x40) addr_40_taken = true;
+                if (last_polled_addr == 0x48) addr_48_taken = true;
+                
+                last_polled_addr = 0; 
+            }
+            
+            if (idx > 15) idx = 0;
+        }
+        if (uart_get_hw(UART_ID)->rsr & 0x0F) {
+                uart_get_hw(UART_ID)->rsr = 0; 
+            }
+        sleep_us(100);
+
+    }
+
+    
+    if (addr_40_taken && addr_48_taken) {
+        printf("Both Keypad Addresses (1 & 2) are occupied!\n");
+        printf("Virtual Keypad remains disabled to prevent collisions.\n");
+        
+    } 
+    else if (addr_40_taken) {
+        printf("Keypad 1 (0x40) detected. Switching to Keypad 2 (0x48).\n");
+        my_keypad_addr = 0x48;
+        keypad_tx_enabled = true;
+    } 
+    else if (addr_48_taken) {
+        printf("Keypad 2 (0x48) detected. Switching to Keypad 1 (0x40).\n");
+        my_keypad_addr = 0x40;
+        keypad_tx_enabled = true;
+    } 
+    else {
+        if (!gpio_get(JUMPER_PIN)) my_keypad_addr = 0x40; 
+        else my_keypad_addr = 0x48; // Default
+        printf("No existing keypads detected. Defaulting to jumper State. (%02X)\n", my_keypad_addr);
+        keypad_tx_enabled = true;
+        
+    }
+}
 
 // --- CORE 1: DECODER ---
 void core1_entry() {
@@ -76,12 +154,13 @@ void core1_entry() {
     gpio_set_outover(TX_PIN, GPIO_OVERRIDE_INVERT);
     gpio_pull_up(RX_PIN);
     
-
+    perform_address_discovery();
     uint64_t last_byte_time = 0;
     NemtekState last_pushed_state = {0};
     bool periodic_publish_flag = true;
     int periodic_publish = 0;
     int rx_idx =0;
+    
     printf("[CORE 1] UART Handling.\n");
     while (uart_is_readable(UART_ID)) uart_getc(UART_ID);
     while (true) {
@@ -109,6 +188,19 @@ void core1_entry() {
             
             if (rx_idx >= 11) {
                 NemtekState s = {0};
+                uint8_t poll_byte = rx_raw[10] & (~0x02);
+                sleep_us(5000);
+
+                if (keypad_tx_enabled && poll_byte == my_keypad_addr) {
+                    
+                    
+                    uint8_t response[3] = { 0xFE, 0x06, 0x7F }; 
+                    if (queue_get_level(&key_queue) > 0) {
+                         uint8_t key;
+                        if (queue_try_remove(&key_queue, &key)) response[2] = key;
+                    }
+                    uart_write_blocking(UART_ID, response, 3);
+                }
                 
                 for(int i=0; i<8; i++) s.raw[i] = rx_raw[3+i];
 
@@ -163,10 +255,7 @@ void core1_entry() {
                 }
                 bool state_changed = false;
 
-                // Mask out the keypad address bit(s?).
-                // This stops the raw packet triggering homeassistant to log.
-                // ***TODO*** Let this reflect the keypad address once key sending is implemnented.
-                s.raw[7] = s.raw[7] & (~0x08);
+                s.raw[7] = s.raw[7] & (~0x08); //Simply mask keypad address.
                 if (memcmp(s.raw, last_pushed_state.raw, 8) != 0) {
                     state_changed = true;
                 }
@@ -190,7 +279,14 @@ void core1_entry() {
     }
 
 }
+void init_keypad_logic() {
+    queue_init(&key_queue, sizeof(uint8_t), 64);
+    gpio_init(JUMPER_PIN);
+    gpio_set_dir(JUMPER_PIN, GPIO_IN);
+    gpio_pull_up(JUMPER_PIN); 
 
+    
+}
 
 float get_core_temperature() {
     adc_select_input(4);
@@ -214,6 +310,53 @@ void init_adc_sensors() {
     adc_gpio_init(26);
     adc_set_temp_sensor_enabled(true);
     gpio_disable_pulls(26); 
+}
+
+static char current_topic[128];
+
+
+static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len) {
+    strncpy(current_topic, topic, sizeof(current_topic)-1);
+    
+    current_topic[sizeof(current_topic)-1] = '\0';
+    printf("In mqtt_incoming)publish_cb Topic=%s\n", current_topic);
+}
+
+static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
+    char payload[64];
+    if (len >= sizeof(payload)) len = sizeof(payload) - 1; 
+    memcpy(payload, data, len);
+    payload[len] = '\0'; 
+
+    printf("MQTT RX: Topic='%s' Payload='%s'\n", current_topic, payload);
+
+    if (strstr(current_topic, "/cmd/arm")) {
+        
+        bool req_arm = (strcmp(payload, "ARM_AWAY") == 0) || (strcmp(payload, "ARM_HOME") == 0);
+        bool req_disarm = (strcmp(payload, "DISARM") == 0);
+
+        const char* pin = sys_cfg.master_pin; 
+        
+        if (req_arm && last_known_state.fence_off) { 
+            printf("CMD: Arming System...\n");
+            for(int i=0; i<4; i++) queue_add_blocking(&key_queue, &pin[i]);
+            uint8_t enter = 0x0B; queue_add_blocking(&key_queue, &enter);
+        } 
+        else if (req_disarm && !last_known_state.fence_off) {
+            printf("CMD: Disarming System...\n");
+            for(int i=0; i<4; i++) queue_add_blocking(&key_queue, &pin[i]);
+            uint8_t enter = 0x0B; queue_add_blocking(&key_queue, &enter);
+        }
+        else {
+            printf("CMD: Ignored (State already matches request)\n");
+        }
+    }
+    
+    else if (strstr(current_topic, "/cmd/keys")) {
+        for(int i=0; i<len; i++) {
+             queue_add_blocking(&key_queue, &payload[i]-48);
+        }
+    }
 }
 
 void mqtt_pub_safe(const char* topic, const char* payload) {
@@ -248,16 +391,16 @@ void publish_discovery() {
     pub_one_config("batt_good",       "Battery Good",      "battery",       "ON", "OFF");
     pub_one_config("low_power",       "Low Power Mode",    "running",       "ON", "OFF");
     pub_one_config("silent",          "Silent Mode",       "running",       "ON", "OFF");
-    pub_one_config("alarm_bypass",    "Alarm Bypassed",    "None",        "ON", "OFF");
-    pub_one_config("gate_bypass",     "Gate Bypassed",     "None",        "ON", "OFF");
-    pub_one_config("gate_immed",      "Gate Immediate",    "None",       "ON", "OFF");
+    pub_one_config("alarm_bypass",    "Alarm Bypassed",    "running",        "ON", "OFF");
+    pub_one_config("gate_bypass",     "Gate Bypassed",     "running",        "ON", "OFF");
+    pub_one_config("gate_immed",      "Gate Immediate",    "running",       "ON", "OFF");
     pub_one_config("buzzer",          "Keypad Buzzer",     "sound",         "ON", "OFF");
     pub_one_config("comms_good",      "Comms Good",        "connectivity",  "ON", "OFF");
 
     pub_one_config("hv_good",         "HV Good",           "running",       "ON", "OFF");
     pub_one_config("hv_check",        "HV Check",          "problem",       "ON", "OFF");
     pub_one_config("hv_bad",          "HV Bad",            "problem",       "ON", "OFF");
-    pub_one_config("fence_off",       "Fence Off",         "None",       "ON", "OFF");
+    pub_one_config("fence_off",       "Fence Off",         "running",       "ON", "OFF");
 
     char p[1024];
     const char* dev = "\"dev\":{\"ids\":[\"nemtek_pico\"],\"name\":\"Nemtek Energizer\",\"mf\":\"Nemtek\",\"sw\":\"3.1\"}";
@@ -386,10 +529,19 @@ void publish_state(NemtekState s) {
     mqtt_pub_safe("nemtek/status", json);
 }
 
+static void mqtt_sub_request_cb(void *arg, err_t result) {
+    printf("MQTT: Subscription result: %d\n", result);
+}
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
     mqtt_connecting = false;
     mqtt_connected = (status == MQTT_CONNECT_ACCEPTED);
-    if(mqtt_connected) cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+    if(mqtt_connected) {
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        err_t err = mqtt_sub_unsub(client, "nemtek/control/#", 0, mqtt_sub_request_cb, NULL, 1);
+        if(err != ERR_OK) {
+            printf("MQTT: Subscription Error: %d\n", err);
+        }
+    }
 }
 
 void connect_mqtt() {
@@ -422,6 +574,7 @@ void setup_static_ip() {
 }
 
 int main() {
+    init_keypad_logic();
     stdio_init_all();
     sleep_ms(2000);
     run_config_check();
@@ -501,12 +654,14 @@ int main() {
                 printf("MQTT Success.\n");
                 publish_discovery();
                 sleep_ms(1500);
+                mqtt_set_inpub_callback(mqtt_client, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, NULL);
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
             }
             
         }
 
         if (queue_try_remove(&state_queue, &current_state)) {
+            last_known_state = current_state;
             gpio_put(RELAY_PIN, current_state.alarm_active || current_state.gate_alarm);
             if (mqtt_connected) {
                 publish_state(current_state);
