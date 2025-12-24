@@ -5,6 +5,10 @@ Pretends to be a Nemtek Keypad for a Druid Energiser - allows integration to Hom
 
 This code and any procedures or hardware modifications are "use at your own risk" and is not intended for any safety critical applications. While care has been taken to ensure the reliability of the code it is largly untested beyond one specific installation and we are integrating hobby level microcontrollers into a commercial product, and these are not rated for safety in any way. Only proceed if you understand this and know what you are doing. If you need to isolate the fence safety, it is reccomended to physically disconnect the micro-controller from the fence/keypad bus. No support is offered with this code, but I will look at issues as and when I find time.
 
+## Experimental Builds
+
+Checkout the experimental branch and builds for access to all the latest features.
+
 ## Hardware
 
 ### BoM
@@ -30,7 +34,7 @@ The BoM so far is:
 
 Import the code into VSCODE as from the Pi Pico extention. Copy **config.example.h** to **config.h** and input your settings into it. Currently the code is static IP only as the pico wifi library doesn't play nice with my router. I will add an option for DHCP in due course.
 
-Build, flash, check your home assistant. Also you can run it from a PC and it will generate logs which may help figuring out where it got stuck. 
+Build, flash, check your home assistant. Also you can run it from a PC and it will generate logs over UART (USB) which may help figuring out where it got stuck. 
 
 ## Home Assistant Config
 
@@ -43,7 +47,7 @@ We authenticate on the MQTT server. So, make sure you create a user for this dev
 3. The alarm history status and service mode tags are not tracked at this point.
 4. Not every possible bit in the protocol is mapped yet.
 
-If you are able to assist with raw packets and the state of the LEDs or LCD on you energizer that corresponds to the raw packets, the code can be improved.
+If you are able to assist with raw packets and the state of the LEDs or LCD on you energizer that corresponds to the raw packets, the code can be improved. Please run the latest experimental in this case.
 
 
 
