@@ -11,7 +11,11 @@
 #include "lwip/netif.h"
 #include "hardware/adc.h"
 #include <vector>
-#include "config.h"
+#if __has_include("config.h")
+    #include "config.h"
+#else
+    #include "config_example.h"
+#endif
 
 const float VOLTAGE_DIVIDER_RATIO = ( (R1_VAL + R2_VAL) / R2_VAL); 
 
@@ -243,16 +247,16 @@ void publish_discovery() {
     pub_one_config("batt_good",       "Battery Good",      "battery",       "ON", "OFF");
     pub_one_config("low_power",       "Low Power Mode",    "running",       "ON", "OFF");
     pub_one_config("silent",          "Silent Mode",       "running",       "ON", "OFF");
-    pub_one_config("alarm_bypass",    "Alarm Bypassed",    "None",        "ON", "OFF");
-    pub_one_config("gate_bypass",     "Gate Bypassed",     "None",        "ON", "OFF");
-    pub_one_config("gate_immed",      "Gate Immediate",    "None",       "ON", "OFF");
+    pub_one_config("alarm_bypass",    "Alarm Bypassed",    "running",        "ON", "OFF");
+    pub_one_config("gate_bypass",     "Gate Bypassed",     "running",        "ON", "OFF");
+    pub_one_config("gate_immed",      "Gate Immediate",    "running",       "ON", "OFF");
     pub_one_config("buzzer",          "Keypad Buzzer",     "sound",         "ON", "OFF");
     pub_one_config("comms_good",      "Comms Good",        "connectivity",  "ON", "OFF");
 
     pub_one_config("hv_good",         "HV Good",           "running",       "ON", "OFF");
     pub_one_config("hv_check",        "HV Check",          "problem",       "ON", "OFF");
     pub_one_config("hv_bad",          "HV Bad",            "problem",       "ON", "OFF");
-    pub_one_config("fence_off",       "Fence Off",         "None",       "ON", "OFF");
+    pub_one_config("fence_off",       "Fence Off",         "running",       "ON", "OFF");
 
     char p[1024];
     const char* dev = "\"dev\":{\"ids\":[\"nemtek_pico\"],\"name\":\"Nemtek Energizer\",\"mf\":\"Nemtek\",\"sw\":\"3.1\"}";
