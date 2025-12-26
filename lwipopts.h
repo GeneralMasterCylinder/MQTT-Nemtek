@@ -59,10 +59,12 @@
 #define LWIP_STATS                  1
 #define LWIP_STATS_DISPLAY          1
 #endif
-#define MEMP_NUM_SYS_TIMEOUT            20
+#define MEMP_NUM_SYS_TIMEOUT            50
+#define MEMP_NUM_TCP_PCB            16
+#define MEMP_NUM_TCP_SEG            32
 #define MQTT_OUTPUT_RINGBUF_SIZE        1024
 #define MQTT_VAR_HEADER_BUFFER_LEN      1024
-#define MQTT_REQ_MAX_IN_FLIGHT          4
+#define MQTT_REQ_MAX_IN_FLIGHT          8
 
 
 #define ETHARP_DEBUG                LWIP_DBG_OFF

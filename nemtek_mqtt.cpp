@@ -68,7 +68,11 @@ const uint JUMPER_PIN = 22;
 uint8_t my_keypad_addr = 0x48; 
 bool keypad_tx_enabled = false; 
 NemtekState last_known_state = {0};
-
+const char ret = 0x0B;
+const char star = 0x0A;
+#ifndef NDEBUG
+    char boot_reason[64] = "Clean Boot";
+#endif
 
 void perform_address_discovery() {
     printf("Core 1: Starting Keypad Discovery (5s)...\n");
@@ -101,7 +105,9 @@ void perform_address_discovery() {
             }
             gap = time_us_64() - last_packet_time;
             if (ch == 0xFE && (gap < 100000)) {
-                printf("Gap (keypad)= %i uS\n",(int)gap);
+                #ifndef NDEBUG
+                    printf("Gap (keypad)= %i uS\n",(int)gap);
+                #endif
                 if (last_polled_addr == 0x40) addr_40_taken = true;
                 if (last_polled_addr == 0x48) addr_48_taken = true;
                 
@@ -165,7 +171,13 @@ void core1_entry() {
     while (uart_is_readable(UART_ID)) uart_getc(UART_ID);
     while (true) {
         core1_heartbeat++;
+        #ifndef NDEBUG
+            watchdog_hw->scratch[4] = 1;
+        #endif
         if (uart_is_readable(UART_ID)) {
+            #ifndef NDEBUG
+            watchdog_hw->scratch[4] = 2;
+            #endif
             uint8_t ch = uart_getc(UART_ID);
             
             if ((time_us_64() - last_byte_time > 50000) && (rx_idx !=0)) rx_idx =0;
@@ -187,6 +199,9 @@ void core1_entry() {
             }
             
             if (rx_idx >= 11) {
+                #ifndef NDEBUG
+                    watchdog_hw->scratch[4] = 3;
+                #endif
                 NemtekState s = {0};
                 uint8_t poll_byte = rx_raw[10] & (~0x02);
                 sleep_us(5000);
@@ -246,7 +261,6 @@ void core1_entry() {
                 {
                     periodic_publish=0;
                     periodic_publish_flag=true;
-                    printf("Heartbeat Publish\n");
                 }
                 if (queue_get_level(&state_queue) > 3)
                 {
@@ -268,13 +282,19 @@ void core1_entry() {
                         printf("Change Or Heartbeat Publish\n");
                     }
                 }
+                #ifndef NDEBUG
+                    watchdog_hw->scratch[4] = 3;
+                #endif
                 rx_idx =0;
             }
         } else {
             if (uart_get_hw(UART_ID)->rsr & 0x0F) {
                 uart_get_hw(UART_ID)->rsr = 0; 
             }
-            sleep_us(100);
+            #ifndef NDEBUG
+                watchdog_hw->scratch[4] = 4;
+            #endif
+            sleep_us(50);
         }
     }
 
@@ -353,8 +373,11 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
     }
     
     else if (strstr(current_topic, "/cmd/keys")) {
+        
         for(int i=0; i<len; i++) {
-             queue_add_blocking(&key_queue, &payload[i]-48);
+            if (payload[i]>= '0' && payload[i]<='9') queue_add_blocking(&key_queue, &payload[i]-'0');
+            if (payload[i] == '*') queue_add_blocking(&key_queue, &star);
+            if (payload[i] == '#') queue_add_blocking(&key_queue, &ret);
         }
     }
 }
@@ -452,7 +475,7 @@ void publish_discovery() {
         "\"stat_t\":\"nemtek/status\","
         "\"val_tpl\":\"{{value_json.temp}}\","
         "\"unit_of_meas\":\"°C\","
-        "\"dev_cla\":\"temperature\","
+        "\"dev_cla\":gpio_init\"temperature\","
         "\"uniq_id\":\"nt_temp\","
         "%s" 
         "}", dev);
@@ -460,6 +483,20 @@ void publish_discovery() {
     mqtt_pub_safe("homeassistant/sensor/nt_temp/config", p_temp);
     cyw43_arch_poll();
     sleep_ms(50);
+    char p_boot[512];
+    snprintf(p_boot, sizeof(p_boot), 
+        "{"
+        "\"name\":\"Last Boot Reason\","
+        "\"stat_t\":\"nemtek/debug/boot_reason\","
+        "\"uniq_id\":\"nt_boot_reason\","
+        "\"icon\":\"mdi:information-outline\","
+        "\"ent_cat\":\"diagnostic\"," 
+        "%s"
+        "}", dev);
+
+    mqtt_pub_safe("homeassistant/sensor/nt_boot/config", p_boot);
+    cyw43_arch_poll();
+     sleep_ms(50);
 }
 
 // ***TODO*** Review how to set the status to "unavailable"
@@ -527,6 +564,8 @@ void publish_state(NemtekState s) {
     );
 
     mqtt_pub_safe("nemtek/status", json);
+    
+    
 }
 
 static void mqtt_sub_request_cb(void *arg, err_t result) {
@@ -575,6 +614,11 @@ void setup_static_ip() {
 
 int main() {
     init_keypad_logic();
+    #ifndef NDEBUG
+    if (watchdog_caused_reboot()) snprintf(boot_reason, sizeof(boot_reason), "Core1: %d | Core0: %d\n", 
+           watchdog_hw->scratch[4], 
+           watchdog_hw->scratch[5]);
+    #endif
     stdio_init_all();
     sleep_ms(2000);
     run_config_check();
@@ -613,7 +657,9 @@ int main() {
     }
 
     mqtt_client = mqtt_client_new();
-
+    #ifndef NDEBUG
+    watchdog_hw->scratch[5] = 1;
+    #endif
     uint64_t last_valid_packet_time = 0;
     uint32_t last_hb = 0;
     bool prev_connected = false;
@@ -621,6 +667,9 @@ int main() {
     printf("Starting MQTT Loop\n");
     watchdog_enable(8000,1);
     while (true) {
+        #ifndef NDEBUG
+        watchdog_hw->scratch[5] = 2;
+        #endif
         if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
        
         if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP) {
@@ -656,6 +705,7 @@ int main() {
                 sleep_ms(1500);
                 mqtt_set_inpub_callback(mqtt_client, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, NULL);
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
+                
             }
             
         }
@@ -665,19 +715,30 @@ int main() {
             gpio_put(RELAY_PIN, current_state.alarm_active || current_state.gate_alarm);
             if (mqtt_connected) {
                 publish_state(current_state);
+                if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
                 last_valid_packet_time = time_us_64();
+                #ifndef NDEBUG
+                mqtt_pub_safe("nemtek/debug/boot_reason", boot_reason);
+                #endif
+                watchdog_hw->scratch[5] = 3;
             }
         }
         if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
         {
             publish_availability_offline();
+            #ifndef NDEBUG
+            watchdog_hw->scratch[5] = 4;
+            #endif
         }
 
         
         
         prev_connected = mqtt_connected;
-
+        if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
         cyw43_arch_poll();
-        sleep_ms(500);
+        #ifndef NDEBUG
+        watchdog_hw->scratch[5] = 5;
+        #endif
+        sleep_ms(50);
     }
 }
