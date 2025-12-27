@@ -19,7 +19,7 @@
 
 static float VOLTAGE_DIVIDER_RATIO = 4.9;
 
-//#define WATCHDEBUG
+#define WATCHDEBUG
 const float ADC_CONVERSION = 3.3f / 4096.0f;
 
 // --- FULL STATE STRUCT (21 Flags + Raw Logger) ---
@@ -93,15 +93,18 @@ void perform_address_discovery() {
             uint8_t ch = uart_getc(UART_ID);
             
             if (idx < 31) buf[idx++] = ch;
+            if ((buf[0] != 0xFF) && (buf[0]!=0xFE))
+            {
+                idx=0;
+                continue;
+            }
+          
 
             if (idx >= 11 && buf[0] == 0xFF) {
                 last_polled_addr = buf[10] & (~0x2);  // Buzzer bit may cause trouble.
                 last_packet_time = time_us_64();
                 idx = 0; 
                 continue; 
-            }
-            if (buf[0] == 0xFF) {
-               
             }
             gap = time_us_64() - last_packet_time;
             if (ch == 0xFE && (gap < 100000)) {
@@ -148,7 +151,7 @@ void perform_address_discovery() {
     }
 }
 
-// --- CORE 1: DECODER ---
+
 void core1_entry() {
     uart_init(UART_ID, BAUD_RATE);
     gpio_set_function(TX_PIN, GPIO_FUNC_UART);
@@ -395,7 +398,7 @@ void pub_one_config(const char* key, const char* name, const char* cls, const ch
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/binary_sensor/nt_%s/config", key);
     mqtt_pub_safe(topic, p);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
     sleep_ms(100); 
 }
 
@@ -440,17 +443,17 @@ void publish_discovery() {
         "}", dev);
 
     mqtt_pub_safe("homeassistant/alarm_control_panel/nt_alarm/config", p);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
     sleep_ms(50);
     
 
     sleep_ms(50);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
     
     snprintf(p, sizeof(p), "{\"name\":\"Raw Packet\",\"stat_t\":\"nemtek/status\",\"val_tpl\":\"{{value_json.raw}}\",\"icon\":\"mdi:code-braces\",\"uniq_id\":\"nt_raw\",%s}", dev);
     mqtt_pub_safe("homeassistant/sensor/nt_raw/config", p);
     sleep_ms(50);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
 
     char p_batt[512];
     snprintf(p_batt, sizeof(p_batt), 
@@ -466,7 +469,7 @@ void publish_discovery() {
         "}", dev);
         
     mqtt_pub_safe("homeassistant/sensor/nt_supply_v/config", p_batt);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
     sleep_ms(50);
 
     char p_temp[512];
@@ -482,7 +485,7 @@ void publish_discovery() {
         "}", dev);
         
     mqtt_pub_safe("homeassistant/sensor/nt_temp/config", p_temp);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
     sleep_ms(50);
     char p_boot[512];
     snprintf(p_boot, sizeof(p_boot), 
@@ -496,7 +499,7 @@ void publish_discovery() {
         "}", dev);
 
     mqtt_pub_safe("homeassistant/sensor/nt_boot/config", p_boot);
-    cyw43_arch_poll();
+    //cyw43_arch_poll();
      sleep_ms(50);
 }
 
@@ -598,8 +601,8 @@ void connect_mqtt() {
     ci.will_retain = 0;
     ip_addr_t broker_ip;
     ip4addr_aton(sys_cfg.mqtt_server, &broker_ip);
-    
     mqtt_connecting = true;
+    mqtt_set_inpub_callback(mqtt_client, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, NULL);
     mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
 }
 
@@ -695,46 +698,41 @@ int main() {
         if (!mqtt_connected && !mqtt_connecting) {
             printf("(Re)Connecting MQTT\n");
             connect_mqtt();
-            sleep_ms(1000);
-            continue;
+            sleep_ms(50);
+            cyw43_arch_poll();
+            
         }
        
         if (mqtt_connected) {
             if (!prev_connected) {
                 printf("MQTT Success.\n");
                 publish_discovery();
-                sleep_ms(1500);
-                mqtt_set_inpub_callback(mqtt_client, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, NULL);
+                
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
+                cyw43_arch_poll();
                 
             }
-            
-        }
-
-        if (queue_try_remove(&state_queue, &current_state)) {
-            last_known_state = current_state;
-            gpio_put(RELAY_PIN, current_state.alarm_active || current_state.gate_alarm);
-            if (mqtt_connected) {
+            if (queue_try_remove(&state_queue, &current_state)) {
+                last_known_state = current_state;
+                gpio_put(RELAY_PIN, current_state.alarm_active || current_state.gate_alarm);
                 publish_state(current_state);
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
                 last_valid_packet_time = time_us_64();
                 #ifdef WATCHDEBUG
                 mqtt_pub_safe("nemtek/debug/boot_reason", boot_reason);
-                
                 watchdog_hw->scratch[5] = 3;
+                #endif
+                
+            }
+            if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
+            {
+                publish_availability_offline();
+                if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
+                #ifdef WATCHDEBUG
+                watchdog_hw->scratch[5] = 4;
                 #endif
             }
         }
-        if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
-        {
-            publish_availability_offline();
-            #ifdef WATCHDEBUG
-            watchdog_hw->scratch[5] = 4;
-            #endif
-        }
-
-        
-        
         prev_connected = mqtt_connected;
         if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
         cyw43_arch_poll();
