@@ -19,7 +19,7 @@
 
 static float VOLTAGE_DIVIDER_RATIO = 4.9;
 
-
+//#define WATCHDEBUG
 const float ADC_CONVERSION = 3.3f / 4096.0f;
 
 // --- FULL STATE STRUCT (21 Flags + Raw Logger) ---
@@ -70,7 +70,7 @@ bool keypad_tx_enabled = false;
 NemtekState last_known_state = {0};
 const char ret = 0x0B;
 const char star = 0x0A;
-#ifndef NDEBUG
+#ifdef WATCHDEBUG
     char boot_reason[64] = "Clean Boot";
 #endif
 
@@ -105,7 +105,7 @@ void perform_address_discovery() {
             }
             gap = time_us_64() - last_packet_time;
             if (ch == 0xFE && (gap < 100000)) {
-                #ifndef NDEBUG
+                #ifdef WATCHDEBUG
                     printf("Gap (keypad)= %i uS\n",(int)gap);
                 #endif
                 if (last_polled_addr == 0x40) addr_40_taken = true;
@@ -119,7 +119,7 @@ void perform_address_discovery() {
         if (uart_get_hw(UART_ID)->rsr & 0x0F) {
                 uart_get_hw(UART_ID)->rsr = 0; 
             }
-        sleep_us(100);
+        busy_wait_us(100);
 
     }
 
@@ -171,11 +171,11 @@ void core1_entry() {
     while (uart_is_readable(UART_ID)) uart_getc(UART_ID);
     while (true) {
         core1_heartbeat++;
-        #ifndef NDEBUG
+        #ifdef WATCHDEBUG
             watchdog_hw->scratch[4] = 1;
         #endif
         if (uart_is_readable(UART_ID)) {
-            #ifndef NDEBUG
+            #ifdef WATCHDEBUG
             watchdog_hw->scratch[4] = 2;
             #endif
             uint8_t ch = uart_getc(UART_ID);
@@ -199,12 +199,12 @@ void core1_entry() {
             }
             
             if (rx_idx >= 11) {
-                #ifndef NDEBUG
+                #ifdef WATCHDEBUG
                     watchdog_hw->scratch[4] = 3;
                 #endif
                 NemtekState s = {0};
                 uint8_t poll_byte = rx_raw[10] & (~0x02);
-                sleep_us(5000);
+                busy_wait_us(5000);
 
                 if (keypad_tx_enabled && poll_byte == my_keypad_addr) {
                     
@@ -282,7 +282,7 @@ void core1_entry() {
                         printf("Change Or Heartbeat Publish\n");
                     }
                 }
-                #ifndef NDEBUG
+                #ifdef WATCHDEBUG
                     watchdog_hw->scratch[4] = 3;
                 #endif
                 rx_idx =0;
@@ -291,11 +291,12 @@ void core1_entry() {
             if (uart_get_hw(UART_ID)->rsr & 0x0F) {
                 uart_get_hw(UART_ID)->rsr = 0; 
             }
-            #ifndef NDEBUG
-                watchdog_hw->scratch[4] = 4;
-            #endif
-            sleep_us(50);
+            
         }
+        #ifdef WATCHDEBUG
+            watchdog_hw->scratch[4] = 4;
+        #endif
+        busy_wait_us(50);
     }
 
 }
@@ -614,7 +615,7 @@ void setup_static_ip() {
 
 int main() {
     init_keypad_logic();
-    #ifndef NDEBUG
+    #ifdef WATCHDEBUG
     if (watchdog_caused_reboot()) snprintf(boot_reason, sizeof(boot_reason), "Core1: %d | Core0: %d\n", 
            watchdog_hw->scratch[4], 
            watchdog_hw->scratch[5]);
@@ -657,7 +658,7 @@ int main() {
     }
 
     mqtt_client = mqtt_client_new();
-    #ifndef NDEBUG
+    #ifdef WATCHDEBUG
     watchdog_hw->scratch[5] = 1;
     #endif
     uint64_t last_valid_packet_time = 0;
@@ -667,7 +668,7 @@ int main() {
     printf("Starting MQTT Loop\n");
     watchdog_enable(8000,1);
     while (true) {
-        #ifndef NDEBUG
+        #ifdef WATCHDEBUG
         watchdog_hw->scratch[5] = 2;
         #endif
         if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
@@ -717,16 +718,17 @@ int main() {
                 publish_state(current_state);
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
                 last_valid_packet_time = time_us_64();
-                #ifndef NDEBUG
+                #ifdef WATCHDEBUG
                 mqtt_pub_safe("nemtek/debug/boot_reason", boot_reason);
-                #endif
+                
                 watchdog_hw->scratch[5] = 3;
+                #endif
             }
         }
         if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
         {
             publish_availability_offline();
-            #ifndef NDEBUG
+            #ifdef WATCHDEBUG
             watchdog_hw->scratch[5] = 4;
             #endif
         }
@@ -736,7 +738,7 @@ int main() {
         prev_connected = mqtt_connected;
         if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
         cyw43_arch_poll();
-        #ifndef NDEBUG
+        #ifdef WATCHDEBUG
         watchdog_hw->scratch[5] = 5;
         #endif
         sleep_ms(50);
