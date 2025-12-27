@@ -387,7 +387,9 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
 }
 
 void mqtt_pub_safe(const char* topic, const char* payload) {
+    cyw43_arch_lwip_begin();
     mqtt_publish(mqtt_client, topic, payload, strlen(payload), 1, 1, NULL, NULL);
+    cyw43_arch_lwip_end();
 }
 
 void pub_one_config(const char* key, const char* name, const char* cls, const char* on_v, const char* off_v) {
@@ -398,7 +400,6 @@ void pub_one_config(const char* key, const char* name, const char* cls, const ch
     char topic[128];
     snprintf(topic, sizeof(topic), "homeassistant/binary_sensor/nt_%s/config", key);
     mqtt_pub_safe(topic, p);
-    //cyw43_arch_poll();
     sleep_ms(100); 
 }
 
@@ -443,17 +444,14 @@ void publish_discovery() {
         "}", dev);
 
     mqtt_pub_safe("homeassistant/alarm_control_panel/nt_alarm/config", p);
-    //cyw43_arch_poll();
     sleep_ms(50);
     
 
     sleep_ms(50);
-    //cyw43_arch_poll();
     
     snprintf(p, sizeof(p), "{\"name\":\"Raw Packet\",\"stat_t\":\"nemtek/status\",\"val_tpl\":\"{{value_json.raw}}\",\"icon\":\"mdi:code-braces\",\"uniq_id\":\"nt_raw\",%s}", dev);
     mqtt_pub_safe("homeassistant/sensor/nt_raw/config", p);
     sleep_ms(50);
-    //cyw43_arch_poll();
 
     char p_batt[512];
     snprintf(p_batt, sizeof(p_batt), 
@@ -469,7 +467,6 @@ void publish_discovery() {
         "}", dev);
         
     mqtt_pub_safe("homeassistant/sensor/nt_supply_v/config", p_batt);
-    //cyw43_arch_poll();
     sleep_ms(50);
 
     char p_temp[512];
@@ -485,7 +482,6 @@ void publish_discovery() {
         "}", dev);
         
     mqtt_pub_safe("homeassistant/sensor/nt_temp/config", p_temp);
-    //cyw43_arch_poll();
     sleep_ms(50);
     char p_boot[512];
     snprintf(p_boot, sizeof(p_boot), 
@@ -499,7 +495,6 @@ void publish_discovery() {
         "}", dev);
 
     mqtt_pub_safe("homeassistant/sensor/nt_boot/config", p_boot);
-    //cyw43_arch_poll();
      sleep_ms(50);
 }
 
@@ -603,7 +598,9 @@ void connect_mqtt() {
     ip4addr_aton(sys_cfg.mqtt_server, &broker_ip);
     mqtt_connecting = true;
     mqtt_set_inpub_callback(mqtt_client, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, NULL);
+    cyw43_arch_lwip_begin();
     mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
+    cyw43_arch_lwip_end();
 }
 
 void setup_static_ip() {
@@ -699,7 +696,6 @@ int main() {
             printf("(Re)Connecting MQTT\n");
             connect_mqtt();
             sleep_ms(50);
-            cyw43_arch_poll();
             
         }
        
@@ -709,7 +705,7 @@ int main() {
                 publish_discovery();
                 
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
-                cyw43_arch_poll();
+                
                 
             }
             if (queue_try_remove(&state_queue, &current_state)) {
@@ -735,7 +731,7 @@ int main() {
         }
         prev_connected = mqtt_connected;
         if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
-        cyw43_arch_poll();
+        
         #ifdef WATCHDEBUG
         watchdog_hw->scratch[5] = 5;
         #endif
