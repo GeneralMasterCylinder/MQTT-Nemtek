@@ -19,7 +19,7 @@
 
 static float VOLTAGE_DIVIDER_RATIO = 4.9;
 
-#define WATCHDEBUG
+//#define WATCHDEBUG
 const float ADC_CONVERSION = 3.3f / 4096.0f;
 
 // --- FULL STATE STRUCT (21 Flags + Raw Logger) ---
@@ -79,7 +79,8 @@ void perform_address_discovery() {
     
     bool addr_40_taken = false;
     bool addr_48_taken = false;
-    
+     bool bus_activity_detected = false;
+
     uint64_t start_time = time_us_64();
     uint8_t buf[32]; 
     int idx = 0;
@@ -104,6 +105,7 @@ void perform_address_discovery() {
                 last_polled_addr = buf[10] & (~0x2);  // Buzzer bit may cause trouble.
                 last_packet_time = time_us_64();
                 idx = 0; 
+                bus_activity_detected = true;
                 continue; 
             }
             gap = time_us_64() - last_packet_time;
@@ -113,7 +115,7 @@ void perform_address_discovery() {
                 #endif
                 if (last_polled_addr == 0x40) addr_40_taken = true;
                 if (last_polled_addr == 0x48) addr_48_taken = true;
-                
+                bus_activity_detected = true;
                 last_polled_addr = 0; 
             }
             
@@ -143,11 +145,16 @@ void perform_address_discovery() {
         keypad_tx_enabled = true;
     } 
     else {
-        if (!gpio_get(JUMPER_PIN)) my_keypad_addr = 0x40; 
-        else my_keypad_addr = 0x48; // Default
-        printf("No existing keypads detected. Defaulting to jumper State. (%02X)\n", my_keypad_addr);
-        keypad_tx_enabled = true;
-        
+        if (!bus_activity_detected) {
+            printf("No Bus Activity Detected (Energizer Off/Disconnected?).\n");
+            printf("Safety: Virtual Keypad DISABLED until reboot.\n");
+            keypad_tx_enabled = false;
+        } else {
+            if (!gpio_get(JUMPER_PIN)) my_keypad_addr = 0x40; 
+            else my_keypad_addr = 0x48; // Default
+            printf("No existing keypads detected. Defaulting to jumper State. (%02X)\n", my_keypad_addr);
+            keypad_tx_enabled = true;
+        }
     }
 }
 
