@@ -19,7 +19,7 @@
 
 static float VOLTAGE_DIVIDER_RATIO = 4.9;
 
-//#define WATCHDEBUG
+#define WATCHDEBUG
 const float ADC_CONVERSION = 3.3f / 4096.0f;
 
 // --- FULL STATE STRUCT (21 Flags + Raw Logger) ---
@@ -156,6 +156,7 @@ void perform_address_discovery() {
             keypad_tx_enabled = true;
         }
     }
+    return;
 }
 
 
@@ -190,7 +191,10 @@ void core1_entry() {
             #endif
             uint8_t ch = uart_getc(UART_ID);
             
-            if ((time_us_64() - last_byte_time > 50000) && (rx_idx !=0)) rx_idx =0;
+            if ((time_us_64() - last_byte_time > 500000) && (rx_idx !=0)) {
+                rx_idx =0;
+                
+            }
             last_byte_time = time_us_64();
             if (rx_idx < 32) {
                 rx_raw[rx_idx++] = ch;
@@ -200,30 +204,31 @@ void core1_entry() {
             }
             if (rx_idx > 0 && rx_raw[0] != 0xFF) {
                 rx_idx = 0;
+                
                 continue;
             }
 
             if (rx_idx > 1 && rx_raw[1] != 0x09) {
                 rx_idx = 0;
+                
                 continue;
             }
-            
+           
             if (rx_idx >= 11) {
+    
                 #ifdef WATCHDEBUG
                     watchdog_hw->scratch[4] = 3;
                 #endif
                 NemtekState s = {0};
                 uint8_t poll_byte = rx_raw[10] & (~0x02);
                 busy_wait_us(5000);
-
                 if (keypad_tx_enabled && poll_byte == my_keypad_addr) {
-                    
-                    
                     uint8_t response[3] = { 0xFE, 0x06, 0x7F }; 
                     if (queue_get_level(&key_queue) > 0) {
                          uint8_t key;
                         if (queue_try_remove(&key_queue, &key)) response[2] = key;
                     }
+                    
                     uart_write_blocking(UART_ID, response, 3);
                 }
                 
@@ -271,9 +276,14 @@ void core1_entry() {
                 {
                     periodic_publish=0;
                     periodic_publish_flag=true;
+                       
                 }
+    
                 if (queue_get_level(&state_queue) > 3)
                 {
+                    #ifdef WATCHDEBUG
+                    if (periodic_publish_flag) printf("Avoid Stale data\n");
+                    #endif
                     periodic_publish_flag =false; 
                     
                 }
@@ -289,7 +299,6 @@ void core1_entry() {
                         last_pushed_state = s;
                         periodic_publish_flag = false;
                         periodic_publish = 0;
-                        printf("Change Or Heartbeat Publish\n");
                     }
                 }
                 #ifdef WATCHDEBUG
@@ -299,7 +308,11 @@ void core1_entry() {
             }
         } else {
             if (uart_get_hw(UART_ID)->rsr & 0x0F) {
+                   #ifdef WATCHDEBUG
+                    printf("UART Error %04X\n",uart_get_hw(UART_ID)->rsr );
+                    #endif
                 uart_get_hw(UART_ID)->rsr = 0; 
+              
             }
             
         }
@@ -439,6 +452,7 @@ void publish_discovery() {
 
     char p[1024];
     const char* dev = "\"dev\":{\"ids\":[\"nemtek_pico\"],\"name\":\"Nemtek Energizer\",\"mf\":\"Nemtek\",\"sw\":\"3.1\"}";
+    
     snprintf(p, sizeof(p), 
         "{"
         "\"name\":\"Nemtek Control\","
@@ -453,15 +467,13 @@ void publish_discovery() {
     mqtt_pub_safe("homeassistant/alarm_control_panel/nt_alarm/config", p);
     sleep_ms(50);
     
-
-    sleep_ms(50);
     
     snprintf(p, sizeof(p), "{\"name\":\"Raw Packet\",\"stat_t\":\"nemtek/status\",\"val_tpl\":\"{{value_json.raw}}\",\"icon\":\"mdi:code-braces\",\"uniq_id\":\"nt_raw\",%s}", dev);
     mqtt_pub_safe("homeassistant/sensor/nt_raw/config", p);
     sleep_ms(50);
 
-    char p_batt[512];
-    snprintf(p_batt, sizeof(p_batt), 
+    
+    snprintf(p, sizeof(p), 
         "{"
         "\"name\":\"Supply Voltage\","
         "\"stat_t\":\"nemtek/status\","
@@ -472,26 +484,24 @@ void publish_discovery() {
         "\"uniq_id\":\"nt_supply_v\","
         "%s"
         "}", dev);
-        
-    mqtt_pub_safe("homeassistant/sensor/nt_supply_v/config", p_batt);
+    mqtt_pub_safe("homeassistant/sensor/nt_supply_v/config", p);
     sleep_ms(50);
 
-    char p_temp[512];
-    snprintf(p_temp, sizeof(p_temp), 
+    snprintf(p, sizeof(p), 
         "{"
         "\"name\":\"Device Temperature\","
         "\"stat_t\":\"nemtek/status\","
         "\"val_tpl\":\"{{value_json.temp}}\","
         "\"unit_of_meas\":\"°C\","
-        "\"dev_cla\":gpio_init\"temperature\","
+        "\"dev_cla\":\"temperature\"," 
         "\"uniq_id\":\"nt_temp\","
         "%s" 
         "}", dev);
-        
-    mqtt_pub_safe("homeassistant/sensor/nt_temp/config", p_temp);
+    mqtt_pub_safe("homeassistant/sensor/nt_temp/config", p);
     sleep_ms(50);
-    char p_boot[512];
-    snprintf(p_boot, sizeof(p_boot), 
+
+    
+    snprintf(p, sizeof(p), 
         "{"
         "\"name\":\"Last Boot Reason\","
         "\"stat_t\":\"nemtek/debug/boot_reason\","
@@ -500,9 +510,21 @@ void publish_discovery() {
         "\"ent_cat\":\"diagnostic\"," 
         "%s"
         "}", dev);
+    mqtt_pub_safe("homeassistant/sensor/nt_boot/config", p);
+    sleep_ms(50);
 
-    mqtt_pub_safe("homeassistant/sensor/nt_boot/config", p_boot);
-     sleep_ms(50);
+    snprintf(p, sizeof(p), 
+        "{"
+        "\"name\":\"Keypad Address\","
+        "\"stat_t\":\"nemtek/status\","
+        "\"val_tpl\":\"{{value_json.keypad_addr}}\"," 
+        "\"icon\":\"mdi:remote\","
+        "\"ent_cat\":\"diagnostic\"," 
+        "\"uniq_id\":\"nt_keypad_addr\","
+        "%s"
+        "}", dev);
+    mqtt_pub_safe("homeassistant/sensor/nt_keypad_addr/config", p);
+    sleep_ms(50);
 }
 
 // ***TODO*** Review how to set the status to "unavailable"
@@ -525,7 +547,8 @@ void publish_availability_offline() {
         "\"fence_off\":\"unknown\",\"fence_volts_low\":\"unknown\","
         "\"alarm_bypass\":\"unknown\",\"silent\":\"unknown\",\"gate_immed\":\"unknown\","
         "\"gate_bypass\":\"unknown\",\"batt_empty\":\"unknown\",\"batt_low\":\"unknown\","
-        "\"buzzer\":\"unknown\",\"mains\":\"unknown\",\"comms_good\":\"OFF\""
+        "\"buzzer\":\"unknown\",\"mains\":\"unknown\",\"comms_good\":\"OFF\","
+        "\"keypad_addr\":\"unknown\""
         "}",
         temp_c, bat_voltage
         
@@ -537,9 +560,13 @@ void publish_availability_offline() {
 }
 void publish_state(NemtekState s) {
     if (!mqtt_connected) return;
-    char json[1024];
+    char json[2048];
     float temp_c = get_core_temperature();
     float bat_voltage = get_supply_voltage();
+    char kpad_str[16];
+    if (keypad_tx_enabled) snprintf(kpad_str, sizeof(kpad_str), "0x%02X", my_keypad_addr);
+    else snprintf(kpad_str, sizeof(kpad_str), "DISABLED");
+    
     snprintf(json, sizeof(json),
         "{"
         "\"raw\":\"%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X\"," 
@@ -553,7 +580,8 @@ void publish_state(NemtekState s) {
         "\"fence_off\":\"%s\",\"fence_volts_low\":\"%s\","
         "\"alarm_bypass\":\"%s\",\"silent\":\"%s\",\"gate_immed\":\"%s\","
         "\"gate_bypass\":\"%s\",\"batt_empty\":\"%s\",\"batt_low\":\"%s\","
-        "\"buzzer\":\"%s\",\"mains\":\"%s\",\"comms_good\":\"ON\""
+        "\"buzzer\":\"%s\",\"mains\":\"%s\",\"comms_good\":\"ON\","
+        "\"keypad_addr\":\"%s\""
         "}",
         
         s.raw[0], s.raw[1], s.raw[2], s.raw[3], s.raw[4], s.raw[5], s.raw[6], s.raw[7],
@@ -566,7 +594,8 @@ void publish_state(NemtekState s) {
         s.fence_off?"ON":"OFF", s.fence_volts_low?"ON":"OFF",
         s.alarm_bypass?"ON":"OFF", s.silent_alarm?"ON":"OFF", s.gate_immediate?"ON":"OFF",
         s.gate_bypass?"ON":"OFF", s.batt_empty?"ON":"OFF", s.batt_low?"ON":"OFF",
-        s.buzzer_active?"ON":"OFF", s.mains_present?"ON":"OFF"
+        s.buzzer_active?"ON":"OFF", s.mains_present?"ON":"OFF",
+        kpad_str
     );
 
     mqtt_pub_safe("nemtek/status", json);
@@ -670,6 +699,7 @@ int main() {
     #endif
     uint64_t last_valid_packet_time = 0;
     uint32_t last_hb = 0;
+    int comms_timeout_pub_delay =0;
     bool prev_connected = false;
     NemtekState current_state = {0};
     printf("Starting MQTT Loop\n");
@@ -714,8 +744,7 @@ int main() {
                 if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
                 
                 
-            }
-            if (queue_try_remove(&state_queue, &current_state)) {
+            }else if (queue_try_remove(&state_queue, &current_state)) {
                 last_known_state = current_state;
                 gpio_put(RELAY_PIN, current_state.alarm_active || current_state.gate_alarm);
                 publish_state(current_state);
@@ -727,13 +756,17 @@ int main() {
                 #endif
                 
             }
-            if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
+            else if (time_us_64() - last_valid_packet_time > COMMS_FAIL_TIMEOUT)
             {
-                publish_availability_offline();
-                if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
-                #ifdef WATCHDEBUG
-                watchdog_hw->scratch[5] = 4;
-                #endif
+                comms_timeout_pub_delay++;
+                if (comms_timeout_pub_delay>1000){
+                    publish_availability_offline();
+                    if(core1_heartbeat != last_hb)  last_hb = core1_heartbeat; watchdog_update(); 
+                    #ifdef WATCHDEBUG
+                    watchdog_hw->scratch[5] = 4;
+                    #endif
+                    comms_timeout_pub_delay = 0;
+                }
             }
         }
         prev_connected = mqtt_connected;
