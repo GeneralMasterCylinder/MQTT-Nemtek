@@ -21,7 +21,7 @@
 #endif
 #define MEM_ALIGNMENT               4
 #ifndef MEM_SIZE
-#define MEM_SIZE                    4000
+#define MEM_SIZE                    16384
 #endif
 #define MEMP_NUM_TCP_SEG            32
 #define MEMP_NUM_ARP_QUEUE          10
@@ -44,11 +44,11 @@
 #define LINK_STATS                  0
 // #define ETH_PAD_SIZE                2
 #define LWIP_CHKSUM_ALGORITHM       3
-#define LWIP_DHCP                   0
+#define LWIP_DHCP                   1
 #define LWIP_IPV4                   1
 #define LWIP_TCP                    1
 #define LWIP_UDP                    1
-#define LWIP_DNS                    0
+#define LWIP_DNS                    1
 #define LWIP_TCP_KEEPALIVE          1
 #define LWIP_NETIF_TX_SINGLE_PBUF   1
 #define DHCP_DOES_ARP_CHECK         0
@@ -59,10 +59,12 @@
 #define LWIP_STATS                  1
 #define LWIP_STATS_DISPLAY          1
 #endif
-#define MEMP_NUM_SYS_TIMEOUT            20
-#define MQTT_OUTPUT_RINGBUF_SIZE        1024
-#define MQTT_VAR_HEADER_BUFFER_LEN      1024
-#define MQTT_REQ_MAX_IN_FLIGHT          4
+#define MEMP_NUM_SYS_TIMEOUT            50
+#define MEMP_NUM_TCP_PCB            16
+#define MEMP_NUM_TCP_SEG            32
+#define MQTT_OUTPUT_RINGBUF_SIZE        2048
+#define MQTT_VAR_HEADER_BUFFER_LEN      256
+#define MQTT_REQ_MAX_IN_FLIGHT          8
 
 
 #define ETHARP_DEBUG                LWIP_DBG_OFF

@@ -35,10 +35,11 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(nemtek_mqtt nemtek_mqtt.cpp )
+add_executable(nemtek_mqtt nemtek_mqtt.cpp config_wizard.cpp)
 
 pico_set_program_name(nemtek_mqtt "nemtek_mqtt")
 pico_set_program_version(nemtek_mqtt "0.1")
+target_compile_definitions(nemtek_mqtt PRIVATE PICO_STACK_SIZE=4096)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(nemtek_mqtt 0)
@@ -61,6 +62,7 @@ target_link_libraries(nemtek_mqtt
         pico_stdlib
         pico_multicore 
         hardware_adc
+        hardware_flash
         )
 
 pico_add_extra_outputs(nemtek_mqtt)
