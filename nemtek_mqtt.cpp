@@ -662,7 +662,7 @@ int main() {
     if (sys_cfg.r2_val >0)
         VOLTAGE_DIVIDER_RATIO =((sys_cfg.r1_val +sys_cfg.r2_val)/ sys_cfg.r2_val);
      
-    printf("Nemtek Druid MQTT Client\n");
+    printf("Nemtek Druid MQTT Client version %s\n", VERSION);
     init_adc_sensors() ;
 
     gpio_init(RELAY_PIN); gpio_set_dir(RELAY_PIN, GPIO_OUT); gpio_put(RELAY_PIN, 0);

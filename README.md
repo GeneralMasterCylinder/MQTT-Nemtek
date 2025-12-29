@@ -51,6 +51,7 @@ We authenticate on the MQTT server. So, make sure you create a user for this dev
 3. Not every possible bit in the protocol is mapped yet. 
 4. Only arming and disarming is implemented right now.
 5. Pico WiFi doesn't play nice with all routers. Use a static IP to be sure.
+6. Commission mode is experimental, largely untested, and I intend to depreciate it in a later revision in favour of a better solution.
 
 If you are able to assist with raw packets and the state of the LEDs or LCD on you energizer that corresponds to the raw packets, the code can be improved.
 
