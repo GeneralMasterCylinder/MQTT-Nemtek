@@ -1,6 +1,6 @@
 #ifndef CONFIG_WIZARD_H
 #define CONFIG_WIZARD_H
-
+#define VERSION "1.0.0-beta"
 #include <stdint.h>
 #include <stdbool.h>
 #if __has_include("config.h")
