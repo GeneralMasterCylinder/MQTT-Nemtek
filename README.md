@@ -3,7 +3,7 @@ Pretends to be a Nemtek Keypad for a Druid Energiser - allows integration to Hom
 
 ## Disclaimer
 
-This code and any procedures or hardware modifications are "use at your own risk" and is not intended for any safety critical applications. While care has been taken to ensure the reliability of the code it is largly untested beyond one specific installation and we are integrating hobby level microcontrollers into a commercial product, and these are not rated for safety in any way. Only proceed if you understand this and know what you are doing. If you need to isolate the fence safely, it is reccomended to physically disconnect the micro-controller from the fence/keypad bus. No support is offered with this code, but I will look at issues as and when I find time.
+This code and any procedures or hardware modifications are "use at your own risk" and is not intended for any safety critical applications. While care has been taken to ensure the reliability of the code it is largly untested beyond one specific installation and we are integrating hobby level microcontrollers into a commercial product, and these are not rated for safety in any way. Only proceed if you understand this and know what you are doing. If you need to isolate the fence safely, it is reccomended to physically disconnect the micro-controller from the fence/keypad bus. No support is offered with this code, but I will look at issues as and when I find time. This repository is not endorsed or supported by Nemtek in any way, and the protocol contained therein is reverse engineered using basic tools (logic analysers, and mircrocontrollers). Nemtek are in no way responsible for any issues caused by this code.
 
 ## Hardware
 
